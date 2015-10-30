@@ -9,7 +9,7 @@ class SolrToSolr
   go: (@config) ->
     @sourceClient = solr.createClient(@config.from)
     @destClient   = solr.createClient(@config.to)
-
+    
     @config.start = @config.start || 0
     @config.params = @config.params || {}
     @config.params = @config.params || {}

@@ -6,9 +6,9 @@ from:
 
 # copy destination
 to:
-  host: 'solr-applicants1-int',
-  port: '8983',
-  core: '/applicants',
+  host: 'solr-applicants1-int'
+  port: '8983'
+  core: '/applicants'
   path: '/solr'
 
 # this query will be executed against the "from" documents to select to documents to move
