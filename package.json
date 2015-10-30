@@ -26,13 +26,14 @@
     "index"
   ],
   "dependencies": {
+    "coffee-script": "~1.3.3",
+    "limiter": "^1.1.0",
+    "request": "^2.65.0",
     "solr": "~0.2.1",
-    "underscore": "~1.3.3",
-    "coffee-script": "~1.3.3"
+    "underscore": "~1.3.3"
   },
   "license": "MIT",
   "engines": {
     "node": "~0.6.10"
   }
 }
-

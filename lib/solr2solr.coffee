@@ -1,27 +1,49 @@
 path = require 'path'
-solr = require 'solr'
-_ =    require 'underscore'
+solr = require './solr/solr'
+_ = require 'underscore'
+extend = require('util')._extend
+RateLimiter = require('limiter').RateLimiter
 
 class SolrToSolr
 
   go: (@config) ->
     @sourceClient = solr.createClient(@config.from)
     @destClient   = solr.createClient(@config.to)
-    @nextBatch(@config.start)
 
-  nextBatch: (start) ->
+    @config.start = @config.start || 0
+    @config.params = @config.params || {}
+    @config.params = @config.params || {}
+    @limiter = new RateLimiter(1, @config.throttle)
+
+    @nextBatch(@config.start, @config.params)
+
+  nextBatch: (start, params) ->
+    
     console.log "Querying starting at #{start}"
-    @sourceClient.query @config.query, {rows:@config.rows, start:start}, (err, response) =>
-      return console.log "Some kind of solr query error #{err}" if err?
-      responseObj = JSON.parse response
+    
+    newParams = extend(params, {rows: @config.rows, start:start});
 
-      newDocs = @prepareDocuments(responseObj.response.docs, start)
-      @writeDocuments newDocs, =>
-        start += @config.rows
-        if responseObj.response.numFound > start
-          @nextBatch(start)
+    @limiter.removeTokens 1, =>
+      @sourceClient.query @config.query, newParams, (err, response) =>
+        return console.log "Some kind of solr query error #{err}" if err?
+
+        responseObj = JSON.parse response
+        if(!@config.update)
+          newDocs = @prepareDocuments(responseObj.response.docs, start)
+          @addDocuments newDocs, =>
+            start += @config.rows
+            if responseObj.response.numFound > start
+              @nextBatch(start, newParams)
+            else
+              @destClient.commit()
         else
-          @destClient.commit()
+          newDocs = @prepareDocuments(responseObj.response.docs, start)
+          @updateDocuments newDocs, =>
+            start += @config.rows
+            if responseObj.response.numFound > start
+              @nextBatch(start, newParams)
+            else
+              @destClient.commit()
 
   prepareDocuments: (docs, start) =>
     for doc in docs
@@ -37,10 +59,13 @@ class SolrToSolr
       for fab in @config.fabricate
         vals = fab.fabricate(newDoc, start)
         newDoc[fab.name] = vals if vals?
+      for exclude in @config.exclude
+        delete newDoc[exclude]
+
       start++
       newDoc
 
-  writeDocuments: (documents, done) ->
+  addDocuments: (documents, done) ->
     docs = []
     docs.push documents
     if @config.duplicate.enabled
@@ -53,6 +78,22 @@ class SolrToSolr
     @destClient.add _.flatten(docs), (err) =>
       console.log err if err
       @destClient.commit()
+      done()
+
+  updateDocuments: (documents, done) ->
+    docs = []
+    for doc in documents
+      documentToUpdate = {}
+      for key in @config.update.key
+        documentToUpdate[key] = doc[key] ? ""
+      
+      for copyfield in @config.update.copyfield
+        documentToUpdate[copyfield] = {"set": doc[copyfield]}
+  
+      docs.push(documentToUpdate)
+
+    @destClient.atomicUpdate docs, (err) =>
+      
       done()
 
 exports.go = (config) ->
